@@ -1,0 +1,393 @@
+---
+title: "Use Census geographic data in R with tigris"
+subtitle: ""
+date: "April 4, 2017"
+author: "Kyle Walker, Texas Christian University"
+output: 
+  xaringan::moon_reader: 
+    seal: yes
+  
+---
+
+## Follow along!
+
+* https://walkerke.github.io/tigris-webinar
+
+* https://github.com/walkerke/tigris-webinar
+
+* _R Journal_ article: [tigris: an R Package to Access and Work with Geographic Data from the US Census Bureau](https://journal.r-project.org/archive/2016-2/walker.pdf)
+
+---
+
+## Get ready: 
+
+To follow along, open `examples.R` in the GitHub repository and install the required packages (some from GitHub)
+
+---
+
+## Disclaimer
+
+This webinar, and the __tigris__ package, uses Census Bureau Data but is not endorsed or certified by the Census Bureau.  
+
+---
+
+## TIGER/Line shapefiles
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/US-Census-TIGERLogo.svg/1200px-US-Census-TIGERLogo.svg.png" style="width: 400px">
+
+.footnote[Source: Wikimedia Commons]
+
+---
+
+## The Census hierarchy
+
+<img src=img/hierarchy.PNG style="width: 550px">
+
+.footnote[Source: [US Census Bureau](http://www2.census.gov/geo/pdfs/reference/geodiagram.pdf)]
+
+---
+
+## Types of TIGER/Line datasets
+
+* Legal entities
+
+* Statistical entities
+
+* Geographic features
+
+---
+
+## Accessing TIGER/Line shapefiles
+
+[Files accessible from dropdown menu interface](https://www.census.gov/cgi-bin/geo/shapefiles/index.php)
+
+<img src=img/dropdown.PNG style="width: 300px">
+
+---
+
+## Accessing TIGER/Line shapefiles
+
+[Files can be downloaded directly from web or FTP interfaces](http://www2.census.gov/geo/tiger/TIGER2015/)
+
+<img src=img/web.png style="width: 400px">
+
+---
+
+## The __tigris__ package
+
+From CRAN: 
+
+```r
+install.packages("tigris")
+```
+
+Or from GitHub (with __sf__ support): 
+
+```r
+devtools::install_github("walkerke/tigris")
+```
+Let's get started!
+
+```{r, message = FALSE, warning = FALSE}
+library(tigris)
+```
+---
+
+## Basic functionality
+
+```{r}
+us <- states()
+
+plot(us)
+
+```
+
+---
+
+## How __tigris__ works
+
+When you call a __tigris__ function, it does the following: 
+
+* _Downloads_ your data from the US Census Bureau website
+
+* _Stores_ your data in a user cache directory (via __rappdirs__) or in a temporary directory
+
+* _Loads_ your data into your R session with `rgdal::readOGR()` _or_ `sf::st_read()`
+
+---
+
+### TIGER/Line vs. cartographic boundary files
+
+```{r}
+ri <- counties("RI")
+
+ri20 <- counties("RI", cb = TRUE, resolution = "20m")
+
+plot(ri)
+plot(ri20, border = "red", add = TRUE)
+```
+
+---
+
+## Example: Zip Code Tabulation Areas (ZCTAs)
+
+```{r}
+fw_zips <- zctas(cb = TRUE, starts_with = "761")
+
+plot(fw_zips)
+```
+
+---
+
+## Example: roads in Loving County, TX
+
+```{r}
+loving <- roads("TX", "Loving")
+
+plot(loving)
+```
+
+---
+
+### Combining objects with `rbind_tigris`
+
+```{r, eval = FALSE}
+sts <- c("DC", "MD", "VA") 
+
+combined <- rbind_tigris(
+  lapply(sts, function(x) {
+    tracts(x, cb = TRUE)
+  })
+)
+
+plot(combined)
+```
+
+---
+
+### Combining objects with `rbind_tigris`
+
+```{r, echo = FALSE}
+sts <- c("DC", "MD", "VA") 
+
+combined <- rbind_tigris(
+  lapply(sts, function(x) {
+    tracts(x, cb = TRUE)
+  })
+)
+
+plot(combined)
+```
+
+---
+
+### Merging data with `geo_join`
+
+```{r, eval = FALSE}
+df <- read.csv("http://personal.tcu.edu/kylewalker/data/txlege.csv",
+              stringsAsFactors = FALSE)
+              
+districts <- state_legislative_districts("TX", house = "lower", 
+                                         cb = TRUE)
+
+txlege <- geo_join(districts, df, "NAME", "District")
+
+txlege$color <- ifelse(txlege$Party == "R", "red", "blue")
+
+plot(txlege, col = txlege$color)
+legend("topright", legend = c("Republican", "Democrat"),
+      fill = c("red", "blue"))
+```
+
+---
+
+## Merging data with `geo_join`
+
+```{r, echo = FALSE}
+df <- read.csv("http://personal.tcu.edu/kylewalker/data/txlege.csv",
+              stringsAsFactors = FALSE)
+              
+districts <- state_legislative_districts("TX", house = "lower", 
+                                         cb = TRUE)
+
+txlege <- geo_join(districts, df, "NAME", "District")
+
+txlege$color <- ifelse(txlege$Party == "R", "red", "blue")
+
+plot(txlege, col = txlege$color)
+legend("topright", legend = c("Republican", "Democrat"),
+      fill = c("red", "blue"))
+```
+
+---
+
+### Thematic mapping: the __tmap__ package
+
+Let's get some data: 
+
+```{r, eval = FALSE}
+library(tigris)
+library(censusapi)
+library(tidyverse)
+library(tmap)
+
+chi_counties <- c("Cook", "DeKalb", "DuPage", "Grundy", "Lake", 
+                  "Kane", "Kendall", "McHenry", "Will County")
+
+chi_tracts <- tracts(state = "IL", county = chi_counties, 
+                     cb = TRUE)
+
+key <- "YOUR KEY GOES HERE"
+
+data_from_api <- getCensus(name = "acs5", vintage = 2015, 
+                           key = key, vars = "B25077_001E", 
+                           region = "tract:*", 
+                           regionin = "state:17")
+```
+
+---
+
+### Static mapping with __tmap__
+
+```r
+values <- data_from_api %>%
+  transmute(GEOID = paste0(state, county, tract), 
+            value = B25077_001E)
+
+chi_joined = geo_join(chi_tracts, values, by = "GEOID")
+
+tm_shape(chi_joined, projection = 26916) +
+  tm_fill("value", style = "quantile", n = 7, palette = "Greens", 
+          title = "Median home values \nin the Chicago Area") + 
+  tm_legend(bg.color = "white", bg.alpha = 0.6) + 
+  tm_style_gray()
+```
+
+---
+
+### Static mapping with __tmap__
+
+<img src=img/tmap.png style="width: 700px">
+
+
+---
+
+### Interactive mapping with __tmap__
+
+For an interactive Leaflet map, run: 
+
+```r
+ttm()
+```
+
+then run the __tmap__ code as before.  
+
+---
+
+## Simple features for R
+
+* The future of spatial data in R
+
+* Spatial data represented as R data frames, with geometry stored in a list-column
+
+---
+
+## Simple features in __tigris__
+
+Add `class = "sf"` to your __tigris__ function call
+
+or: 
+
+At the beginning of your script, specify `options(tigris_class = "sf")`
+
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+Question: how do home values in the Chicago area vary with distance from downtown?  
+
+```r
+library(sf)
+
+city_hall <- c(-87.631969, 41.883835) %>%
+  st_point() %>%
+  st_sfc(crs = 4269) %>%
+  st_transform(26916)
+```
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+```{r, eval = FALSE}
+options(tigris_class = "sf")
+chi_tracts_sf <- tracts(state = "IL", county = chi_counties, 
+                        cb = TRUE)
+
+chi_tracts_sf %>%
+  st_transform(26916) %>%
+  left_join(values, by = "GEOID") %>%
+  mutate(dist = as.numeric(
+    st_distance(
+      st_centroid(.), city_hall
+      )
+    )) %>%
+  ggplot(aes(x = dist, y = value)) + 
+  geom_smooth(span = 0.3, method = "loess")
+
+```
+
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+<img src=img/loess.png style="width: 850px">
+
+---
+
+## Simple features and __ggplot2__
+
+<img src=img/dc_dots.png style="width: 700px">
+
+
+---
+
+## Questions? 
+
+* Web: <http://personal.tcu.edu/kylewalker>
+
+* Consulting/blog: <https://walkerke.github.io>
+
+* Twitter: @kyle_e_walker
+
+<style>
+
+h1, h2, h3 {
+  color: #035004; 
+}
+
+a {
+  color: #1a730f; 
+}
+
+.inverse {
+  background-color: #035004; 
+
+}
+</style>
+
+
+<!--
+
+Outline: 
+
+* Basics of Census shapefiles
+* How tigris works
+* Core functionality - loading datasets as spatial data frames
+* Helper functions: geo_join and rbind_tigris
+* Making maps with tigris data: tmap and leaflet
+* Simple features for R
+* tigris and simple features
+* Spatial analysis with sf using tigris data
+* Mapping with tigris data and geom_sf()
+
+-->

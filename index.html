@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Use Census geographic data in R with tigris</title>
+    <meta charset="utf-8">
+    <meta name="author" content="Kyle Walker, Texas Christian University" />
+    <link href="index_files/remark-css-0.0.1/example.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Use Census geographic data in R with tigris
+### Kyle Walker, Texas Christian University
+### April 4, 2017
+
+---
+
+
+## Follow along!
+
+* https://walkerke.github.io/tigris-webinar
+
+* https://github.com/walkerke/tigris-webinar
+
+* _R Journal_ article: [tigris: an R Package to Access and Work with Geographic Data from the US Census Bureau](https://journal.r-project.org/archive/2016-2/walker.pdf)
+
+---
+
+## Get ready: 
+
+To follow along, open `examples.R` in the GitHub repository and install the required packages (some from GitHub)
+
+---
+
+## Disclaimer
+
+This webinar, and the __tigris__ package, uses Census Bureau Data but is not endorsed or certified by the Census Bureau.  
+
+---
+
+## TIGER/Line shapefiles
+
+&lt;img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/US-Census-TIGERLogo.svg/1200px-US-Census-TIGERLogo.svg.png" style="width: 400px"&gt;
+
+.footnote[Source: Wikimedia Commons]
+
+---
+
+## The Census hierarchy
+
+&lt;img src=img/hierarchy.PNG style="width: 550px"&gt;
+
+.footnote[Source: [US Census Bureau](http://www2.census.gov/geo/pdfs/reference/geodiagram.pdf)]
+
+---
+
+## Types of TIGER/Line datasets
+
+* Legal entities
+
+* Statistical entities
+
+* Geographic features
+
+---
+
+## Accessing TIGER/Line shapefiles
+
+[Files accessible from dropdown menu interface](https://www.census.gov/cgi-bin/geo/shapefiles/index.php)
+
+&lt;img src=img/dropdown.PNG style="width: 300px"&gt;
+
+---
+
+## Accessing TIGER/Line shapefiles
+
+[Files can be downloaded directly from web or FTP interfaces](http://www2.census.gov/geo/tiger/TIGER2015/)
+
+&lt;img src=img/web.png style="width: 400px"&gt;
+
+---
+
+## The __tigris__ package
+
+From CRAN: 
+
+```r
+install.packages("tigris")
+```
+
+Or from GitHub (with __sf__ support): 
+
+```r
+devtools::install_github("walkerke/tigris")
+```
+Let's get started!
+
+
+```r
+library(tigris)
+```
+---
+
+## Basic functionality
+
+
+```r
+us &lt;- states()
+
+plot(us)
+```
+
+&lt;img src="index_files/figure-html/unnamed-chunk-2-1.png" width="672" /&gt;
+
+---
+
+## How __tigris__ works
+
+When you call a __tigris__ function, it does the following: 
+
+* _Downloads_ your data from the US Census Bureau website
+
+* _Stores_ your data in a user cache directory (via __rappdirs__) or in a temporary directory
+
+* _Loads_ your data into your R session with `rgdal::readOGR()` _or_ `sf::st_read()`
+
+---
+
+### TIGER/Line vs. cartographic boundary files
+
+
+```r
+ri &lt;- counties("RI")
+
+ri20 &lt;- counties("RI", cb = TRUE, resolution = "20m")
+
+plot(ri)
+plot(ri20, border = "red", add = TRUE)
+```
+
+&lt;img src="index_files/figure-html/unnamed-chunk-3-1.png" width="672" /&gt;
+
+---
+
+## Example: Zip Code Tabulation Areas (ZCTAs)
+
+
+```r
+fw_zips &lt;- zctas(cb = TRUE, starts_with = "761")
+
+plot(fw_zips)
+```
+
+&lt;img src="index_files/figure-html/unnamed-chunk-4-1.png" width="672" /&gt;
+
+---
+
+## Example: roads in Loving County, TX
+
+
+```r
+loving &lt;- roads("TX", "Loving")
+
+plot(loving)
+```
+
+&lt;img src="index_files/figure-html/unnamed-chunk-5-1.png" width="672" /&gt;
+
+---
+
+### Combining objects with `rbind_tigris`
+
+
+```r
+sts &lt;- c("DC", "MD", "VA") 
+
+combined &lt;- rbind_tigris(
+  lapply(sts, function(x) {
+    tracts(x, cb = TRUE)
+  })
+)
+
+plot(combined)
+```
+
+---
+
+### Combining objects with `rbind_tigris`
+
+&lt;img src="index_files/figure-html/unnamed-chunk-7-1.png" width="672" /&gt;
+
+---
+
+### Merging data with `geo_join`
+
+
+```r
+df &lt;- read.csv("http://personal.tcu.edu/kylewalker/data/txlege.csv",
+              stringsAsFactors = FALSE)
+              
+districts &lt;- state_legislative_districts("TX", house = "lower", 
+                                         cb = TRUE)
+
+txlege &lt;- geo_join(districts, df, "NAME", "District")
+
+txlege$color &lt;- ifelse(txlege$Party == "R", "red", "blue")
+
+plot(txlege, col = txlege$color)
+legend("topright", legend = c("Republican", "Democrat"),
+      fill = c("red", "blue"))
+```
+
+---
+
+## Merging data with `geo_join`
+
+&lt;img src="index_files/figure-html/unnamed-chunk-9-1.png" width="672" /&gt;
+
+---
+
+### Thematic mapping: the __tmap__ package
+
+Let's get some data: 
+
+
+```r
+library(tigris)
+library(censusapi)
+library(tidyverse)
+library(tmap)
+
+chi_counties &lt;- c("Cook", "DeKalb", "DuPage", "Grundy", "Lake", 
+                  "Kane", "Kendall", "McHenry", "Will County")
+
+chi_tracts &lt;- tracts(state = "IL", county = chi_counties, 
+                     cb = TRUE)
+
+key &lt;- "YOUR KEY GOES HERE"
+
+data_from_api &lt;- getCensus(name = "acs5", vintage = 2015, 
+                           key = key, vars = "B25077_001E", 
+                           region = "tract:*", 
+                           regionin = "state:17")
+```
+
+---
+
+### Static mapping with __tmap__
+
+```r
+values &lt;- data_from_api %&gt;%
+  transmute(GEOID = paste0(state, county, tract), 
+            value = B25077_001E)
+
+chi_joined = geo_join(chi_tracts, values, by = "GEOID")
+
+tm_shape(chi_joined, projection = 26916) +
+  tm_fill("value", style = "quantile", n = 7, palette = "Greens", 
+          title = "Median home values \nin the Chicago Area") + 
+  tm_legend(bg.color = "white", bg.alpha = 0.6) + 
+  tm_style_gray()
+```
+
+---
+
+### Static mapping with __tmap__
+
+&lt;img src=img/tmap.png style="width: 700px"&gt;
+
+
+---
+
+### Interactive mapping with __tmap__
+
+For an interactive Leaflet map, run: 
+
+```r
+ttm()
+```
+
+then run the __tmap__ code as before.  
+
+---
+
+## Simple features for R
+
+* The future of spatial data in R
+
+* Spatial data represented as R data frames, with geometry stored in a list-column
+
+---
+
+## Simple features in __tigris__
+
+Add `class = "sf"` to your __tigris__ function call
+
+or: 
+
+At the beginning of your script, specify `options(tigris_class = "sf")`
+
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+Question: how do home values in the Chicago area vary with distance from downtown?  
+
+```r
+library(sf)
+
+city_hall &lt;- c(-87.631969, 41.883835) %&gt;%
+  st_point() %&gt;%
+  st_sfc(crs = 4269) %&gt;%
+  st_transform(26916)
+```
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+
+```r
+options(tigris_class = "sf")
+chi_tracts_sf &lt;- tracts(state = "IL", county = chi_counties, 
+                        cb = TRUE)
+
+chi_tracts_sf %&gt;%
+  st_transform(26916) %&gt;%
+  left_join(values, by = "GEOID") %&gt;%
+  mutate(dist = as.numeric(
+    st_distance(
+      st_centroid(.), city_hall
+      )
+    )) %&gt;%
+  ggplot(aes(x = dist, y = value)) + 
+  geom_smooth(span = 0.3, method = "loess")
+```
+
+---
+
+### Exploratory spatial analysis pipelines with __sf__
+
+&lt;img src=img/loess.png style="width: 850px"&gt;
+
+---
+
+## Simple features and __ggplot2__
+
+&lt;img src=img/dc_dots.png style="width: 700px"&gt;
+
+
+---
+
+## Questions? 
+
+* Web: &lt;http://personal.tcu.edu/kylewalker&gt;
+
+* Consulting/blog: &lt;https://walkerke.github.io&gt;
+
+* Twitter: @kyle_e_walker
+
+&lt;style&gt;
+
+h1, h2, h3 {
+  color: #035004; 
+}
+
+a {
+  color: #1a730f; 
+}
+
+.inverse {
+  background-color: #035004; 
+
+}
+&lt;/style&gt;
+
+
+&lt;!--
+
+Outline: 
+
+* Basics of Census shapefiles
+* How tigris works
+* Core functionality - loading datasets as spatial data frames
+* Helper functions: geo_join and rbind_tigris
+* Making maps with tigris data: tmap and leaflet
+* Simple features for R
+* tigris and simple features
+* Spatial analysis with sf using tigris data
+* Mapping with tigris data and geom_sf()
+
+--&gt;
+    </textarea>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create();
+if (window.HTMLWidgets) slideshow.on('showSlide', function (slide) {setTimeout(function() {window.dispatchEvent(new Event('resize'));}, 100)});</script>
+
+  </body>
+</html>
