@@ -132,7 +132,7 @@ income_data = data_from_api %>%
 
 dc <- tracts("DC", cb = TRUE) %>%
   left_join(income_data, by = "GEOID") %>%
-  st_transform(32618)
+  st_transform(26918)
 
 below25 <- st_sample(dc, dc$below25) %>%
   st_sf() %>%
@@ -145,9 +145,6 @@ above200 <- st_sample(dc, dc$above200) %>%
   mutate(type = "Above $200k")
 
 dots <- rbind(below25, above200)
-
-water <- area_water("DC", 1) %>%
-  st_transform(32618)
 
 dots %>%
   ggplot() + 
